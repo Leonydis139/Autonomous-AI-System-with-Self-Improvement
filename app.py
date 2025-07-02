@@ -2868,10 +2868,10 @@ echo "Script execution complete!"
                 execute_btn = st.button("▶️ Execute Code", type="primary", use_container_width=True)
 
             with exec_btn_col2:
-                validate_btn = st.button("✅ Validate Syntax", use_container_width=True)
+                validate_btn = st.button("✅ Validate Syntax", use_container_width=True, key="validate_syntax_btn")
 
             with exec_btn_col3:
-                clear_code_btn = st.button("🗑️ Clear", use_container_width=True)
+                clear_code_btn = st.button("🗑️ Clear", use_container_width=True, key="clear_code_btn")
 
             # Code execution
             if execute_btn and code_input:
