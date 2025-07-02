@@ -2862,23 +2862,25 @@ Please provide structured educational content with clear explanations, examples,
                             # Display results by source
                             # In the Research Lab tab (tab4), replace this section:
                         for source, source_results in results.items():
-                        if source_results:
-                        with st.expander(f"📚 {source.title()} Results ({len(source_results)} found)", expanded=True):
-                            for i, result in enumerate(source_results, 1):
-                                st.markdown(f"**{i}. {result.get('title', 'Untitled')}**")
+# In the Research Lab tab (tab4), the corrected code should look like this:
+for source, source_results in results.items():
+    if source_results:
+        with st.expander(f"📚 {source.title()} Results ({len(source_results)} found)", expanded=True):
+            for i, result in enumerate(source_results, 1):
+                st.markdown(f"**{i}. {result.get('title', 'Untitled')}**")
 
-                        if result.get('snippet'):
-                                st.markdown(f"_{result['snippet']}_")
+                if result.get('snippet'):
+                    st.markdown(f"_{result['snippet']}_")
 
-                        if result.get('url'):
-                                st.markdown(f"🔗 [Read Full Article]({result['url']})")
+                if result.get('url'):
+                    st.markdown(f"🔗 [Read Full Article]({result['url']})")
 
-                        if result.get('source'):
-                            try:
-                                st.badge(result.get('source', 'Unknown'), help="Source information")
-                            except Exception as e:
-                                st.warning(f"Couldn't display badge: {str(e)}")
-                                st.write(f"Source: {result.get('source', 'Unknown')}")  # Fallback
+                if result.get('source'):
+                    try:
+                        st.badge(result.get('source', 'Unknown'), help="Source information")
+                    except Exception as e:
+                        st.warning(f"Couldn't display badge: {str(e)}")
+                        st.write(f"Source: {result.get('source', 'Unknown')}")  # Fallback
 <style>
 .badge {
     padding: 0.25em 0.4em;
