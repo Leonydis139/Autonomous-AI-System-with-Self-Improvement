@@ -1,3 +1,1 @@
-# requirements.txt
-
-# Placeholder for requirements.txt in enhanced_ai_app/
+# Placeholder for Python dependencies

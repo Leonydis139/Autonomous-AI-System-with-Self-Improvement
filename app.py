@@ -1,3 +1,1 @@
-# app.py
-
-# Placeholder for app.py in enhanced_ai_app/
+STREAMLIT_INTERFACE
