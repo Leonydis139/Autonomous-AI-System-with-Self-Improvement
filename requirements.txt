@@ -6,3 +6,4 @@ python-dotenv==1.0.0
 plotly
 networkx
 psycopg2
+pip==25.1.1
