@@ -64,7 +64,58 @@ logger = logging.getLogger(__name__)
 class EnhancedDatabaseManager:
     def __init__(self):
         self.pg_pool = None
+        self.sqlite_lock = threading.Lock()  # Thread-safe SQLite operations
         self.init_databases()
+        self.cache = {}  # In-memory cache for frequent queries
+        self.cache_lock = threading.Lock()
+        
+    async def get_cached_result(self, key: str) -> Optional[str]:
+        """Get cached result with in-memory and DB caching"""
+        # First check in-memory cache
+        with self.cache_lock:
+            if key in self.cache:
+                if self.cache[key]['expires_at'] > datetime.datetime.now():
+                    return self.cache[key]['value']
+                del self.cache[key]
+                
+        # Fallback to database cache
+        return await self._get_db_cached_result(key)
+        
+    async def _get_db_cached_result(self, key: str) -> Optional[str]:
+        """Get cached result from database"""
+        conn, db_type = None, None
+        try:
+            conn, db_type = self.get_connection()
+            cursor = conn.cursor()
+            
+            if db_type == "postgresql":
+                cursor.execute('''
+                    SELECT value, expires_at FROM cache 
+                    WHERE key = %s AND expires_at > NOW()
+                ''', (key,))
+            else:
+                cursor.execute('''
+                    SELECT value, expires_at FROM cache 
+                    WHERE key = ? AND expires_at > datetime('now')
+                ''', (key,))
+
+            result = cursor.fetchone()
+            if result:
+                # Cache in memory for faster access
+                with self.cache_lock:
+                    self.cache[key] = {
+                        'value': result[0],
+                        'expires_at': result[1]
+                    }
+                return result[0]
+            return None
+
+        except Exception as e:
+            logger.error(f"Cache retrieval error: {e}")
+            return None
+        finally:
+            if conn:
+                self.return_connection(conn, db_type)
 
     def init_databases(self):
         """Initialize both SQLite and PostgreSQL databases"""
@@ -253,15 +304,73 @@ class EnhancedDatabaseManager:
 # ===================== ENHANCED SECURITY MANAGER =====================
 class EnhancedSecurityManager:
     def __init__(self):
+        # Add more blocked patterns
         self.blocked_patterns = [
-            r"import\s+(os|sys|shutil|subprocess|socket|tempfile)",
+            r"import\s+(os|sys|shutil|subprocess|socket|tempfile|ctypes|mmap)",
             r"__import__", r"eval\(", r"exec\(", r"open\(", r"file\(",
             r"system\(", r"popen\(", r"rm\s+", r"del\s+", r"format\s*\(",
-            r"\.format\s*\(", r"f['\"].*\{.*\}.*['\"]", r"input\(", r"raw_input\("
+            r"\.format\s*\(", r"f['\"].*\{.*\}.*['\"]", r"input\(", r"raw_input\(",
+            r"pickle", r"marshal", r"__reduce__", r"__getattr__", r"__setattr__"
         ]
         self.max_execution_time = CODE_EXECUTION_TIMEOUT
         self.max_code_length = 10000
         self.rate_limits = {}
+        self.jwt_secret = os.getenv('JWT_SECRET', 'default_secret_change_in_production')
+        
+    def generate_jwt(self, user_id: str) -> str:
+        """Generate JWT token for user session"""
+        payload = {
+            'user_id': user_id,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+            'iat': datetime.datetime.utcnow()
+        }
+        return jwt.encode(payload, self.jwt_secret, algorithm='HS256')
+
+    def verify_jwt(self, token: str) -> Optional[Dict]:
+        """Verify JWT token"""
+        try:
+            return jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
+        except:
+            return None
+
+    # Enhanced safe_execute with better sandboxing
+    def safe_execute(self, code: str, user_id: str = "default") -> str:
+        """Enhanced safe code execution with containerization"""
+        if not self.check_rate_limit(user_id, "code_execution", 5, 300):
+            return "🔒 Rate limit exceeded. Please wait before executing more code."
+
+        if len(code) > self.max_code_length:
+            return "🔒 Code too long for execution"
+
+        # More comprehensive security checks
+        for pattern in self.blocked_patterns:
+            if re.search(pattern, code, re.IGNORECASE):
+                return "🔒 Security: Restricted operation detected"
+
+        try:
+            # Use Docker container for safer execution
+            client = docker.from_env()
+            container = client.containers.run(
+                "python:3.9-slim",
+                command=f"python -c \"{self._prepare_safe_code(code)}\"",
+                detach=True,
+                mem_limit="100m",
+                network_mode="none",
+                remove=True,
+                stdout=True,
+                stderr=True,
+                timeout=self.max_execution_time
+            )
+            
+            try:
+                container.wait(timeout=self.max_execution_time)
+                logs = container.logs().decode('utf-8')
+                return self._sanitize_output(logs)
+            except Exception as e:
+                return f"⚠️ Container error: {str(e)}"
+                
+        except Exception as e:
+            return f"⚠️ Execution error: {str(e)}"
 
     def check_rate_limit(self, user_id: str, action: str, limit: int = 10, window: int = 60) -> bool:
         """Enhanced rate limiting"""
@@ -385,12 +494,54 @@ finally:
 class EnhancedResearchEngine:
     def __init__(self, db_manager: EnhancedDatabaseManager):
         self.db_manager = db_manager
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.executor = ThreadPoolExecutor(max_workers=10)  # Increased workers
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
         ]
+        self.search_apis = {
+            'google': 'https://www.googleapis.com/customsearch/v1',
+            'bing': 'https://api.bing.microsoft.com/v7.0/search',
+            'duckduckgo': None  # Using direct DDGS
+        }
+        
+    async def search_multiple_sources(self, query: str, max_results: int = 5) -> Dict[str, List[Dict]]:
+        """Async multi-source search with better error handling"""
+        cache_key = f"search_{hashlib.md5(query.encode()).hexdigest()}_{max_results}"
+        
+        # Check cache first
+        cached = await self.db_manager.get_cached_result(cache_key)
+        if cached:
+            try:
+                return json.loads(cached)
+            except:
+                pass
+                
+        # Execute searches in parallel
+        tasks = [
+            self._search_web_enhanced(query, max_results),
+            self._search_wikipedia_enhanced(query),
+            self._search_arxiv_enhanced(query, max_results),
+            self._search_news(query, max_results)
+        ]
+        
+        results = {}
+        search_tasks = asyncio.gather(*tasks, return_exceptions=True)
+        web, wiki, arxiv, news = await search_tasks
+        
+        results.update({
+            'web': web if not isinstance(web, Exception) else [],
+            'wikipedia': wiki if not isinstance(wiki, Exception) else [],
+            'arxiv': arxiv if not isinstance(arxiv, Exception) else [],
+            'news': news if not isinstance(news, Exception) else []
+        })
+        
+        # Cache results
+        if any(results.values()):
+            await self.db_manager.set_cached_result(cache_key, json.dumps(results), 60)
+            
+        return results
 
     def search_multiple_sources(self, query: str, max_results: int = 5) -> Dict[str, List[Dict]]:
         """Enhanced multi-source search with better error handling"""
@@ -1797,9 +1948,82 @@ Feel free to rephrase your request or ask more specific questions, and I'll do m
 def main():
     st.set_page_config(
         page_title="🤖 Enhanced AI System Pro",
-        page_icon="🤖",
+        page_icon="🤖", 
         layout="wide",
         initial_sidebar_state="expanded"
+    )
+    
+    # Add theme toggle
+    if 'dark_mode' not in st.session_state:
+        st.session_state.dark_mode = True
+        
+    def toggle_theme():
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        
+    # Apply theme
+    if st.session_state.dark_mode:
+        st.markdown("""
+        <style>
+        :root {
+            --primary-color: #6c63ff;
+            --background-color: #0e1117;
+            --secondary-background: #161b22;
+            --text-color: #f0f0f0;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <style>
+        :root {
+            --primary-color: #6c63ff;
+            --background-color: #ffffff;
+            --secondary-background: #f0f2f6;
+            --text-color: #31333F;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+    # Theme toggle button
+    st.sidebar.button(
+        "🌙 Dark / ☀️ Light", 
+        on_click=toggle_theme,
+        help="Toggle between dark and light mode"
+    )
+    
+    # Add session persistence
+    if 'session_data' not in st.session_state:
+        st.session_state.session_data = {
+            'conversations': [],
+            'preferences': {},
+            'data_sources': []
+        }
+        
+    # Add document processing
+    def process_uploaded_files():
+        for file in st.session_state.uploaded_files:
+            if file.type == "application/pdf":
+                text = extract_text_from_pdf(file)
+                st.session_state.session_data['data_sources'].append({
+                    'name': file.name,
+                    'type': 'pdf',
+                    'content': text[:5000] + "..." if len(text) > 5000 else text
+                })
+            elif file.type in ["text/plain", "text/csv"]:
+                text = file.getvalue().decode("utf-8")
+                st.session_state.session_data['data_sources'].append({
+                    'name': file.name,
+                    'type': 'text',
+                    'content': text[:5000] + "..." if len(text) > 5000 else text
+                })
+                
+    # Add file uploader
+    st.sidebar.file_uploader(
+        "Upload documents",
+        type=["pdf", "txt", "csv", "docx"],
+        key="uploaded_files",
+        accept_multiple_files=True,
+        on_change=process_uploaded_files
     )
 
     # Enhanced mobile-optimized CSS with better styling
