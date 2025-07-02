@@ -13,5 +13,5 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "duckduckgo_search",
     "PostgreSQL",
-    "matplotlib"
+    "matplotlib",
 ]
