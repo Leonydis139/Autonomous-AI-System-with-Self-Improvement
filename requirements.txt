@@ -6,3 +6,5 @@ mdurl==0.1.2
 rich>=10.14.0,<14.0.0
 psycopg2-binary>=2.9.9
 duckduckgo_search
+PostgreSQL
+matplotlib
