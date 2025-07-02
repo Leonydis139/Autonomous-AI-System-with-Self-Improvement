@@ -1963,15 +1963,23 @@ def main():
     # Apply theme
     if st.session_state.dark_mode:
         st.markdown("""
-        <style>
-        :root {
-            --primary-color: #6c63ff;
-            --background-color: #0e1117;
-            --secondary-background: #161b22;
-            --text-color: #f0f0f0;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+<style>
+.badge {
+    padding: 0.25em 0.4em;
+    font-size: 75%;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+}
+.secondary-badge {
+    color: #fff;
+    background-color: #6c757d;
+}
+</style>
+""", unsafe_allow_html=True)
     else:
         st.markdown("""
         <style>
