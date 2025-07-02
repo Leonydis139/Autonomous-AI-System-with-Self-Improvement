@@ -2642,11 +2642,10 @@ Please provide structured educational content with clear explanations, examples,
 
                                             if result.get('source'):
                                                 st.badge(result.get('source', 'Unknown'), help="Source information")
-except Exception as e:
-    st.warning(f"Couldn't display badge: {str(e)}")
-    st.write(f"Source: {result.get('source', 'Unknown')}")  # Fallback
-
-                                            st.markdown("""
+                                                except Exception as e:
+                                                st.warning(f"Couldn't display badge: {str(e)}")
+                                                st.write(f"Source: {result.get('source', 'Unknown')}")  # Fallback
+                                                st.markdown("""
 <style>
 .badge {
     padding: 0.25em 0.4em;
