@@ -3,17 +3,12 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "autonomous-ai-system"
-version = "0.1.0"
-description = "Autonomous AI System with Self-Improvement"
-authors = [
-  { name="Leonydis139" }
-]
 dependencies = [
-  "plotly==5.18.0",
-  "streamlit==1.32.0",
-  "pygments==2.19.2",
-  "markdown-it-py==3.0.0",
-  "mdurl==0.1.2",
-  "rich>=10.14.0,<14.0.0"  # Streamlit 1.32.0 requires this range
+    "plotly==5.18.0",
+    "streamlit==1.32.0",
+    "pygments==2.19.2",
+    "markdown-it-py==3.0.0",
+    "mdurl==0.1.2",
+    "rich>=10.14.0,<14.0.0",  # Matches streamlit's requirements
+    "psycopg2-binary>=2.9.9"  # If you need PostgreSQL
 ]
