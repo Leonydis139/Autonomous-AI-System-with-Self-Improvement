@@ -1,1 +1,10 @@
-# Placeholder for Python dependencies
+plotly==5.18.0
+streamlit==1.32.0
+pygments==2.19.2
+markdown-it-py==3.0.0
+mdurl==0.1.2
+rich>=10.14.0,<14.0.0
+psycopg2-binary==2.9.9
+duckduckgo-search==3.9.4
+scikit-learn==1.5.0  # Instead of 'sklearn'
+typing-extensions==4.14.0
