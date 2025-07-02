@@ -1,5 +1,5 @@
 plotly==5.18.0
-streamlit==1.32.0
+streamlit==1.33.0
 pygments==2.19.2
 markdown-it-py==3.0.0
 mdurl==0.1.2
