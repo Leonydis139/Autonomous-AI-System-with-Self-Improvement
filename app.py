@@ -2641,9 +2641,29 @@ Please provide structured educational content with clear explanations, examples,
                                                 st.markdown(f"🔗 [Read Full Article]({result['url']})")
 
                                             if result.get('source'):
-                                                st.badge(result['source'], type="secondary")
+                                                st.badge(result.get('source', 'Unknown'), help="Source information")
+except Exception as e:
+    st.warning(f"Couldn't display badge: {str(e)}")
+    st.write(f"Source: {result.get('source', 'Unknown')}")  # Fallback
 
-                                            st.markdown("---")
+                                            st.markdown("""
+<style>
+.badge {
+    padding: 0.25em 0.4em;
+    font-size: 75%;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+}
+.secondary-badge {
+    color: #fff;
+    background-color: #6c757d;
+}
+</style>
+""", unsafe_allow_html=True)
 
                             # Research synthesis
                             st.markdown("## 🧠 Research Synthesis")
