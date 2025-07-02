@@ -10,3 +10,4 @@ typing-extensions==4.14.0
 matplotlib
 networkx
 seaborn
+sklearn
