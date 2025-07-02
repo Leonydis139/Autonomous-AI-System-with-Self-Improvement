@@ -8,3 +8,4 @@ psycopg2-binary==2.9.9
 duckduckgo-search==3.9.4
 typing-extensions==4.14.0
 matplotlib
+networkx
