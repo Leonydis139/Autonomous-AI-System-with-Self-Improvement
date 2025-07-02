@@ -4,11 +4,16 @@ import sys
 
 class PluginManager:
     def __init__(self, plugin_path: str = "plugins"):
-        self.plugin_path = plugin_path
-        os.makedirs(self.plugin_path, exist_ok=True)
+        ...
         self.plugins = []
-        self._plugin_state = {}
         self.load_plugins()
+    
+    def load_plugins(self):
+        ...
+        # Loads plugins into self.plugins list
+
+    def list_plugins(self):
+        return [{"name": p["name"], "meta": p["meta"]} for p in self.plugins]
 
     def load_plugins(self):
         self.plugins.clear()
