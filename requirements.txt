@@ -6,3 +6,5 @@ python-dotenv==1.0.0
 plotly==5.0.0
 networkx
 psycopg2
+pandas>=2.0.0
+streamlit>=1.0.0
