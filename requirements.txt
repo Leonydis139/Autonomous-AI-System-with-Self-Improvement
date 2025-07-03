@@ -8,3 +8,4 @@ pylint
 black
 pytest
 psutil
+scipy
