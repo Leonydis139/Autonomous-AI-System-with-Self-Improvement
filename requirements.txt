@@ -13,3 +13,4 @@ yfinance
 feedparser
 plotly
 WordCloud
+nltk
