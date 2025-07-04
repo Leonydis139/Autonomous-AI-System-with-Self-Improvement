@@ -10,3 +10,4 @@ pytest
 psutil
 scipy
 yfinance
+feedparser
