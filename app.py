@@ -34,7 +34,6 @@ import base64
 import pytz
 from dateutil import parser
 from bs4 import BeautifulSoup
-import sagemaker
 import json
 import boto3
 from sagemaker.huggingface import HuggingFaceModel, get_huggingface_llm_image_uri
