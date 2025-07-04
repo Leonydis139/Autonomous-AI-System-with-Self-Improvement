@@ -367,7 +367,7 @@ class LiveDataProvider:
             return []
 
     @st.cache_data(ttl=600, show_spinner="Fetching news...")
-    def get_news_data(_self, topic: str = "technology", max_articles: int = 10) -> List[Dict]:
+    def get_news_data(_self, topic: str = "technology", max_articles: int = "3") -> List[Dict]:
         """
         Fetch and cache news data with proper hashing
         Note: The _self parameter is a workaround for Streamlit caching with instance methods
