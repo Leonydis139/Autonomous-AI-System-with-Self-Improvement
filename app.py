@@ -273,6 +273,30 @@ class LiveDataProvider:
         })
         self.logger = logging.getLogger(__name__)
 
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        })
+        self.logger = logging.getLogger(__name__)
+        self.news_sources = {
+            "technology": [
+                "https://feeds.feedburner.com/oreilly/radar",
+                "https://techcrunch.com/feed/",
+                "https://news.ycombinator.com/rss"
+            ],
+            "business": [
+                "https://www.bloomberg.com/feed/podcasts/etf-report.rss",
+                "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+            ],
+            "general": [
+                "https://rss.cnn.com/rss/cnn_topstories.rss",
+                "https://feeds.bbci.co.uk/news/rss.xml"
+            ]
+        }
+
+
     # Static methods for better caching
     @staticmethod
     @st.cache_data(ttl=300, show_spinner="Fetching stock data...")
@@ -288,6 +312,7 @@ class LiveDataProvider:
 
     @staticmethod
     @st.cache_data(ttl=300, show_spinner="Fetching crypto data...")
+    
     def get_crypto_data(coin_id: str = "bitcoin") -> Dict[str, float]:
         """
         Fetch cryptocurrency data with cache-safe parameters
@@ -320,19 +345,57 @@ class LiveDataProvider:
 
     @staticmethod
     @st.cache_data(ttl=3600, show_spinner="Fetching news...")
-    def get_news_feed(source_url: str, max_items: int = 5) -> List[Dict[str, str]]:
-        """Fetch news feed with cache-safe parameters"""
+    def _get_news_from_source(self, source_url: str, max_items: int) -> List[Dict]:
+        """Helper method to fetch news from a single source"""
         try:
             feed = feedparser.parse(source_url)
-            return [{
-                'title': entry.get('title', ''),
-                'link': entry.get('link', '#'),
-                'published': entry.get('published', ''),
-                'source': feed.feed.get('title', source_url)
-            } for entry in feed.entries[:max_items]]
+            articles = []
+            for entry in feed.entries[:max_items]:
+                try:
+                    articles.append({
+                        'title': entry.get('title', 'No title'),
+                        'link': entry.get('link', '#'),
+                        'published': entry.get('published', ''),
+                        'summary': entry.get('summary', ''),
+                        'source': feed.feed.get('title', source_url)
+                    })
+                except Exception as e:
+                    self.logger.warning(f"Error parsing news entry: {e}")
+            return articles
         except Exception as e:
-            logging.error(f"News feed error: {e}")
+            self.logger.warning(f"Error fetching from {source_url}: {e}")
             return []
+
+    @st.cache_data(ttl=600, show_spinner="Fetching news...")
+    def get_news_data(_self, topic: str = "technology", max_articles: int = 10) -> List[Dict]:
+        """
+        Fetch and cache news data with proper hashing
+        Note: The _self parameter is a workaround for Streamlit caching with instance methods
+        """
+        # Create a stable hash key based on the inputs
+        cache_key = hashlib.md5(f"{topic}_{max_articles}".encode()).hexdigest()
+        
+        sources = _self.news_sources.get(topic.lower(), _self.news_sources["general"])
+        all_articles = []
+        
+        for source in sources[:3]:  # Limit to top 3 sources
+            articles = _self._get_news_from_source(source, max(3, max_articles//len(sources)))
+            all_articles.extend(articles)
+            
+            if len(all_articles) >= max_articles:
+                break
+                
+        # Sort by published date if available
+        try:
+            return sorted(
+                all_articles,
+                key=lambda x: datetime.strptime(x['published'], '%a, %d %b %Y %H:%M:%S %Z') 
+                if x['published'] else datetime.min,
+                reverse=True
+            )[:max_articles]
+        except Exception as e:
+            _self.logger.warning(f"Error sorting articles by date: {e}")
+            return all_articles[:max_articles]
 
     # Instance method for stateful operations
     def get_multiple_crypto_prices(self, coin_ids: List[str]) -> Dict[str, Dict]:
@@ -412,6 +475,7 @@ class LiveDataProvider:
             return {"error": str(e)}
 
     @st.cache_data(ttl=86400, show_spinner="Fetching economic data...")  # 24 hour cache
+    
     def get_economic_indicators(self, api_key: Optional[str] = None) -> Dict:
         """Fetch economic indicators with better data structure"""
         api_key = api_key or os.getenv('FRED_API_KEY')
