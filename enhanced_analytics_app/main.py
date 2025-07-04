@@ -13,3 +13,14 @@ def main():
     """, unsafe_allow_html=True)
 
     # ... (rest of your UI code) ...
+
+def export_user_data(user_id: str):
+    db = st.session_state.db_manager
+    user_data = db.get_user_data(user_id) # Implement this method
+    st.download_button("Download my data", json.dumps(user_data), "user_data.json", "application/json")
+
+# In your preferences tab:
+with tab4:
+    # ... (existing code) ...
+    if st.button("Export My Data"):
+        export_user_data("current_user")
