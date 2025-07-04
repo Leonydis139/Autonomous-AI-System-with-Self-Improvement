@@ -607,7 +607,7 @@ class EnhancedAnalyticsEngine:
                 background_color='white',
                 stopwords=set(nltk.corpus.stopwords.words('english'))
                 .generate(full_text)
-            
+            )
             # Convert to PIL Image
             return wordcloud.to_image()
         except Exception as e:
