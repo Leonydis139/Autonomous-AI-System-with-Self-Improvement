@@ -14,3 +14,4 @@ feedparser
 plotly
 WordCloud
 nltk
+textblob
