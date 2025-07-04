@@ -11,3 +11,4 @@ psutil
 scipy
 yfinance
 feedparser
+PLOTLY
