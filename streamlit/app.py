@@ -51,24 +51,6 @@ image_uri = get_huggingface_llm_image_uri(
     pytorch_version="1.9.0",
     transformers_version="4.12.5"
 )
-
-# Deploy the model on SageMaker
-predictor = model.deploy(
-    instance_type="ml.m5.xlarge",
-    initial_instance_count=1,
-    image_uri=image_uri
-)
-
-# send request
-predictor.predict({
-	"inputs": "My name is Julien and I like to",
-})
-
-# Download NLTK resources
-nltk.download('vader_lexicon', quiet=True)
-nltk.download('stopwords', quiet=True)
-nltk.download('punkt', quiet=True)
-
 # Optional imports for features; handle ImportError where used
 try:
     from sklearn.ensemble import RandomForestRegressor as _RandomForestRegressor
@@ -82,7 +64,7 @@ except ImportError:
     _mean_squared_error = None
     _r2_score = None
     _train_test_split = None
-
+	
 warnings.filterwarnings('ignore')
 
 # ===================== ENHANCED SYSTEM CONFIGURATION =====================
