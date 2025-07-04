@@ -35,35 +35,30 @@ import pytz
 from dateutil import parser
 from bs4 import BeautifulSoup
 import json
-import boto3
 from sagemaker.huggingface import HuggingFaceModel, get_huggingface_llm_image_uri
 
-try:
-	role = sagemaker.get_execution_role()
-except ValueError:
-	iam = boto3.client('iam')
-	role = iam.get_role(RoleName='sagemaker_execution_role')['Role']['Arn']
-
-# Hub Model configuration. https://huggingface.co/models
-hub = {
-	'HF_MODEL_ID':'cerebras/Cerebras-GPT-13B',
-	'SM_NUM_GPUS': json.dumps(1)
-}
-
-# create Hugging Face Model Class
-huggingface_model = HuggingFaceModel(
-	image_uri=get_huggingface_llm_image_uri("huggingface",version="3.2.3"),
-	env=hub,
-	role=role, 
+# Load a pre-trained model from the Hugging Face model hub
+model = HuggingFaceModel(
+    hf_model_id="bert-base-uncased",
+    role="your-iam-role",
+    transformers_version="4.12.5",
+    pytorch_version="1.9.0"
 )
 
-# deploy model to SageMaker Inference
-predictor = huggingface_model.deploy(
-	initial_instance_count=1,
-	instance_type="ml.g5.2xlarge",
-	container_startup_health_check_timeout=300,
-  )
-  
+# Get the Docker image URI for the LLM
+image_uri = get_huggingface_llm_image_uri(
+    "bert-base-uncased",
+    pytorch_version="1.9.0",
+    transformers_version="4.12.5"
+)
+
+# Deploy the model on SageMaker
+predictor = model.deploy(
+    instance_type="ml.m5.xlarge",
+    initial_instance_count=1,
+    image_uri=image_uri
+)
+
 # send request
 predictor.predict({
 	"inputs": "My name is Julien and I like to",
