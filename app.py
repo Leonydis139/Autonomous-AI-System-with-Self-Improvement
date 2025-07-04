@@ -34,35 +34,6 @@ import base64
 import pytz
 from dateutil import parser
 from bs4 import BeautifulSoup
-import json
-from sagemaker.huggingface import HuggingFaceModel, get_huggingface_llm_image_uri
-
-# Load a pre-trained model from the Hugging Face model hub
-model = HuggingFaceModel(
-    hf_model_id="bert-base-uncased",
-    role="your-iam-role",
-    transformers_version="4.12.5",
-    pytorch_version="1.9.0"
-)
-
-# Get the Docker image URI for the LLM
-image_uri = get_huggingface_llm_image_uri(
-    "bert-base-uncased",
-    pytorch_version="1.9.0",
-    transformers_version="4.12.5"
-)
-
-# Deploy the model on SageMaker
-predictor = model.deploy(
-    instance_type="ml.m5.xlarge",
-    initial_instance_count=1,
-    image_uri=image_uri
-)
-
-# send request
-predictor.predict({
-	"inputs": "My name is Julien and I like to",
-})
 
 # Download NLTK resources
 nltk.download('vader_lexicon', quiet=True)
@@ -310,7 +281,7 @@ class EnhancedLiveDataProvider:
         }
 
     @st.cache_data(ttl=300, show_spinner="Fetching stock data...")
-    def get_stock_data(symbol: str, period: str = "1mo") -> pd.DataFrame:
+    def get_stock_data(self, symbol: str, period: str = "1mo") -> pd.DataFrame:
         """Fetch stock data with proper caching"""
         try:
             stock = yf.Ticker(symbol)
@@ -321,7 +292,7 @@ class EnhancedLiveDataProvider:
             return pd.DataFrame()
 
     @st.cache_data(ttl=300, show_spinner="Fetching crypto data...")
-    def get_crypto_data(coin_name: str = "bitcoin") -> Dict[str, float]:
+    def get_crypto_data(self, coin_name: str = "bitcoin") -> Dict[str, float]:
         """
         Fetch cryptocurrency data with cache-safe parameters
         Args:
@@ -384,15 +355,15 @@ class EnhancedLiveDataProvider:
             return []
 
     @st.cache_data(ttl=600, show_spinner="Fetching news...")
-    def get_news_data(_self, topic: str = "technology", max_articles: int = 5) -> List[Dict]:
+    def get_news_data(self, topic: str = "technology", max_articles: int = 5) -> List[Dict]:
         """
         Fetch and cache news data with proper hashing
         """
-        sources = _self.news_sources.get(topic.lower(), _self.news_sources["general"])
+        sources = self.news_sources.get(topic.lower(), self.news_sources["general"])
         all_articles = []
         
         for source in sources[:3]:
-            articles = _self._get_news_from_source(source, max(3, max_articles//len(sources)))
+            articles = self._get_news_from_source(source, max(3, max_articles//len(sources)))
             all_articles.extend(articles)
             
             if len(all_articles) >= max_articles:
@@ -560,9 +531,9 @@ class EnhancedUIComponents:
         
         badge = f"""
         <div style="margin-bottom: 0.5rem;">
-            {EnhancedUIComponents.create_sentiment_badge(sentiment)._proxy}
+            {EnhancedUIComponents.create_sentiment_badge(sentiment)._repr_html_() if sentiment else ""}
         </div>
-        """ if sentiment else ""
+        """ 
         
         st.markdown(f"""
         <div class="news-card" style="
@@ -794,6 +765,7 @@ class UserPreferences:
             "default_news_category": "technology",
             "refresh_interval": 5
         }
+        self.crypto_options = ["bitcoin", "ethereum", "cardano", "solana", "dogecoin"]
         
     def load_preferences(self, user_id: str):
         """Load user preferences from session or database"""
@@ -811,12 +783,47 @@ class UserPreferences:
     def preference_editor(self):
         """UI for editing user preferences"""
         with st.expander("⚙️ User Preferences"):
-            self.preferences['theme'] = st.selectbox("Theme", ["light", "dark", "blue"], index=0)
-            self.preferences['timezone'] = st.selectbox("Timezone", TIMEZONES, index=TIMEZONES.index("UTC"))
-            self.preferences['default_stock'] = st.text_input("Default Stock", "AAPL")
-            self.preferences['default_crypto'] = st.selectbox("Default Crypto", list(self.data_provider.crypto_ids.keys()), index=0)
-            self.preferences['default_news_category'] = st.selectbox("Default News Category", ["technology", "business", "science"], index=0)
-            self.preferences['refresh_interval'] = st.slider("Refresh Interval (min)", 1, 60, 5)
+            # Use current preferences to set default values
+            theme = self.preferences['theme']
+            timezone = self.preferences['timezone']
+            default_stock = self.preferences['default_stock']
+            default_crypto = self.preferences['default_crypto']
+            default_news_category = self.preferences['default_news_category']
+            refresh_interval = self.preferences['refresh_interval']
+            
+            self.preferences['theme'] = st.selectbox(
+                "Theme", 
+                ["light", "dark", "blue"], 
+                index=["light", "dark", "blue"].index(theme)
+            )
+            
+            self.preferences['timezone'] = st.selectbox(
+                "Timezone", 
+                TIMEZONES, 
+                index=TIMEZONES.index(timezone)
+            )
+            
+            self.preferences['default_stock'] = st.text_input(
+                "Default Stock", 
+                value=default_stock
+            )
+            
+            self.preferences['default_crypto'] = st.selectbox(
+                "Default Crypto", 
+                self.crypto_options, 
+                index=self.crypto_options.index(default_crypto)
+            )
+            
+            self.preferences['default_news_category'] = st.selectbox(
+                "Default News Category", 
+                ["technology", "business", "science"], 
+                index=["technology", "business", "science"].index(default_news_category)
+            )
+            
+            self.preferences['refresh_interval'] = st.slider(
+                "Refresh Interval (min)", 
+                1, 60, refresh_interval
+            )
             
             if st.button("Save Preferences"):
                 self.save_preferences("current_user")
@@ -903,6 +910,15 @@ def main():
             color: #6c757d;
             font-size: 0.9rem;
         }
+        .news-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 1rem;
+            border-left: 4px solid #4CAF50;
+            transition: all 0.3s ease;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -986,9 +1002,11 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            stock_symbol = st.text_input("Stock Symbol", 
-                                        value=st.session_state.preferences.preferences['default_stock'], 
-                                        help="Enter stock symbol (e.g., AAPL, GOOGL)")
+            stock_symbol = st.text_input(
+                "Stock Symbol", 
+                value=st.session_state.preferences.preferences['default_stock'], 
+                help="Enter stock symbol (e.g., AAPL, GOOGL)"
+            )
             period = st.selectbox("Time Period", ["1d", "5d", "1mo", "3mo", "6mo", "1y"], index=2)
             
             if st.button("🔍 Analyze Stock", type="primary", use_container_width=True):
@@ -1091,35 +1109,35 @@ def main():
                                     st.warning("⚠️ Prediction confidence is not high. Use with caution.")
                     else:
                         st.error(f"Error: {analysis['error']}")
+    
+    with col2:
+        st.subheader("💰 Cryptocurrency")
+        crypto_coins = list(st.session_state.data_provider.crypto_ids.keys())
         
-        with col2:
-            st.subheader("💰 Cryptocurrency")
-            crypto_coins = list(st.session_state.data_provider.crypto_ids.keys())
-            
-            for coin in crypto_coins[:5]:
-                crypto_data = st.session_state.data_provider.get_crypto_data(coin)
-                if crypto_data and 'price' in crypto_data:
-                    price = crypto_data['price']
-                    change = crypto_data.get('change_24h', 0)
-                    
-                    st.metric(
-                        coin.capitalize(),
-                        f"${price:,.2f}",
-                        f"{change:.2f}%" if change else None,
-                        delta_color="inverse"
-                    )
-                    
-            st.markdown("---")
-            st.subheader("📊 Economic Indicators")
-            eco_data = st.session_state.data_provider.get_economic_indicators()
-            for indicator, data in eco_data.items():
-                if 'data' in data and len(data['data']) > 0:
-                    latest = data['data'][0]
-                    st.metric(
-                        indicator,
-                        latest.get('value', 'N/A'),
-                        data['metadata'].get('unit', '')
-                    )
+        for coin in crypto_coins[:5]:
+            crypto_data = st.session_state.data_provider.get_crypto_data(coin)
+            if crypto_data and 'price' in crypto_data:
+                price = crypto_data['price']
+                change = crypto_data.get('change_24h', 0)
+                
+                st.metric(
+                    coin.capitalize(),
+                    f"${price:,.2f}",
+                    f"{change:.2f}%" if change else None,
+                    delta_color="inverse"
+                )
+                
+        st.markdown("---")
+        st.subheader("📊 Economic Indicators")
+        eco_data = st.session_state.data_provider.get_economic_indicators()
+        for indicator, data in eco_data.items():
+            if 'data' in data and len(data['data']) > 0:
+                latest = data['data'][0]
+                st.metric(
+                    indicator,
+                    latest.get('value', 'N/A'),
+                    data['metadata'].get('unit', '')
+                )
 
     with tab2:
         st.header("📰 News & Sentiment Analysis")
@@ -1164,7 +1182,10 @@ def main():
                         }
                         
                         for i, article in enumerate(news_data):
-                            sentiment = sentiment_results['individual_sentiments'][i]['sentiment'] if sentiment_results else None
+                            sentiment = None
+                            if sentiment_results and i < len(sentiment_results.get('individual_sentiments', [])):
+                                sentiment = sentiment_results['individual_sentiments'][i]['sentiment']
+                                
                             st.session_state.ui_components.create_news_card(
                                 title=article['title'],
                                 source=article['source'],
@@ -1193,36 +1214,36 @@ def main():
                                 """, unsafe_allow_html=True)
                     else:
                         st.warning("No news articles found for this category")
-        
-        with col2:
-            st.subheader("😊 Sentiment Analysis")
-            if 'sentiment_results' in locals() and sentiment_results:
-                if "error" not in sentiment_results:
-                    # Overall sentiment
-                    st.metric("Overall Sentiment", sentiment_results['overall_sentiment'])
-                    
-                    # Sentiment distribution
-                    st.markdown("**Sentiment Distribution**")
-                    dist = sentiment_results['sentiment_distribution']
-                    fig_dist = px.pie(
-                        names=list(dist.keys()),
-                        values=list(dist.values()),
-                        color=list(dist.keys()),
-                        color_discrete_map={
-                            "Positive": "#2ca02c",
-                            "Neutral": "#7f7f7f",
-                            "Negative": "#d62728"
-                        }
-                    )
-                    fig_dist.update_layout(showlegend=False)
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                    
-                    # Word cloud
-                    st.markdown("**Top Keywords**")
-                    if news_data:
-                        news_texts = [article['title'] + ' ' + article.get('summary', '') for article in news_data]
-                        wordcloud_img = st.session_state.analytics_engine.generate_word_cloud(news_texts)
-                        st.image(wordcloud_img, caption="Word Cloud of News Content")
+    
+    with col2:
+        st.subheader("😊 Sentiment Analysis")
+        if 'sentiment_results' in locals() and sentiment_results:
+            if "error" not in sentiment_results:
+                # Overall sentiment
+                st.metric("Overall Sentiment", sentiment_results['overall_sentiment'])
+                
+                # Sentiment distribution
+                st.markdown("**Sentiment Distribution**")
+                dist = sentiment_results['sentiment_distribution']
+                fig_dist = px.pie(
+                    names=list(dist.keys()),
+                    values=list(dist.values()),
+                    color=list(dist.keys()),
+                    color_discrete_map={
+                        "Positive": "#2ca02c",
+                        "Neutral": "#7f7f7f",
+                        "Negative": "#d62728"
+                    }
+                )
+                fig_dist.update_layout(showlegend=False)
+                st.plotly_chart(fig_dist, use_container_width=True)
+                
+                # Word cloud
+                st.markdown("**Top Keywords**")
+                if news_data:
+                    news_texts = [article['title'] + ' ' + article.get('summary', '') for article in news_data]
+                    wordcloud_img = st.session_state.analytics_engine.generate_word_cloud(news_texts)
+                    st.image(wordcloud_img, caption="Word Cloud of News Content")
 
     with tab3:
         st.header("🔍 Custom Analysis")
@@ -1272,7 +1293,7 @@ def main():
                         if pd.api.types.is_numeric_dtype(df[col]):
                             fig_dist = px.histogram(df, x=col, title=f"Distribution of {col}")
                             st.plotly_chart(fig_dist, use_container_width=True)
-                        
+                    
             except Exception as e:
                 st.error(f"Error loading file: {str(e)}")
         else:
