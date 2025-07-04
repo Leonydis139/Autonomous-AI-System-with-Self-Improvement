@@ -12,3 +12,4 @@ scipy
 yfinance
 feedparser
 plotly
+WordCloud
