@@ -16,3 +16,4 @@ WordCloud
 nltk
 textblob
 seaborn
+boto3
