@@ -1,32 +1,64 @@
+import streamlit as st
+from db_manager import EnhancedDatabaseManager
+from live_data_provider import EnhancedLiveDataProvider
+from analytics_engine import EnhancedAnalyticsEngine
+from ui_components import EnhancedUIComponents
+from user_preferences import UserPreferences
+from modules.notifications import send_notification
+
+import pytz
+
+PERSONAS = [
+    "Researcher", "Teacher", "Analyst", "Engineer", "Scientist",
+    "Assistant", "Consultant", "Creative", "Problem Solver"
+]
+TIMEZONES = pytz.all_timezones
+
 def main():
-    # ... (existing setup code) ...
+    st.set_page_config(
+        page_title="Enhanced Data Analytics Platform",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
-    # Responsive theme from user preferences
-    theme = st.session_state.preferences.preferences.get('theme', 'light')
-    st.markdown(f"""
-    <style>
-    body {{
-        background-color: {'#181A1B' if theme == 'dark' else '#f0f2f6'};
-    }}
-    /* More theme CSS based on {theme} */
-    </style>
-    """, unsafe_allow_html=True)
+    # Initialize stateful components
+    if 'db_manager' not in st.session_state:
+        st.session_state.db_manager = EnhancedDatabaseManager()
+    if 'data_provider' not in st.session_state:
+        st.session_state.data_provider = EnhancedLiveDataProvider()
+    if 'analytics_engine' not in st.session_state:
+        st.session_state.analytics_engine = EnhancedAnalyticsEngine()
+    if 'ui_components' not in st.session_state:
+        st.session_state.ui_components = EnhancedUIComponents()
+    if 'preferences' not in st.session_state:
+        st.session_state.preferences = UserPreferences()
+        st.session_state.preferences.load_preferences("current_user")
 
-    # ... (rest of your UI code) ...
+    st.session_state.ui_components.set_theme()
 
-def export_user_data(user_id: str):
-    db = st.session_state.db_manager
-    user_data = db.get_user_data(user_id) # Implement this method
-    st.download_button("Download my data", json.dumps(user_data), "user_data.json", "application/json")
+    st.session_state.ui_components.render_header()
+    st.session_state.ui_components.render_sidebar(PERSONAS, TIMEZONES)
 
-# In your preferences tab:
-with tab4:
-    # ... (existing code) ...
-    if st.button("Export My Data"):
-        export_user_data("current_user")
-        
-def send_notification(message: str):
-    st.toast(message)  # Streamlit 1.25+ toast notification
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📈 Market Dashboard",
+        "📰 News & Sentiment",
+        "🔍 Custom Analysis",
+        "⚙️ User Preferences"
+    ])
+    from modules.market_dashboard import render_market_dashboard
+    from modules.news_sentiment import render_news_sentiment
+    from modules.custom_analysis import render_custom_analysis
+    from modules.user_prefs_tab import render_user_prefs_tab
 
-# Example usage:
-send_notification("Analysis complete! Check your results.")
+    with tab1:
+        render_market_dashboard()
+    with tab2:
+        render_news_sentiment()
+    with tab3:
+        render_custom_analysis()
+    with tab4:
+        render_user_prefs_tab()
+
+if __name__ == "__main__":
+    main()
