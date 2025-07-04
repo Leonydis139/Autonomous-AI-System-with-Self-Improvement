@@ -252,110 +252,95 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from functools import lru_cache
 
+import streamlit as st
+import yfinance as yf
+import requests
+import feedparser
+import pandas as pd
+import os
+import logging
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+
 class LiveDataProvider:
-    """Enhanced live data provider with multiple sources and robust caching"""
+    """Enhanced live data provider with proper caching implementation"""
     
     def __init__(self):
-        self.cache_manager = EnhancedDatabaseManager()
-        self.session = self._create_session()
-        self._setup_logging()
-        
-    def _create_session(self) -> requests.Session:
-        """Create and configure requests session"""
-        session = requests.Session()
-        session.headers.update({
+        self.session = requests.Session()
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-            'Accept-Encoding': 'gzip, deflate'
+            'Accept': 'application/json'
         })
-        session.timeout = 15  # Default timeout in seconds
-        return session
-
-    def _setup_logging(self):
-        """Configure logging for the data provider"""
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-        
+
+    # Static methods for better caching
+    @staticmethod
     @st.cache_data(ttl=300, show_spinner="Fetching stock data...")
-    def get_stock_data(self, symbol: str, period: str = "1mo") -> pd.DataFrame:
-        """Fetch and cache stock data with enhanced error handling"""
+    def get_stock_data(symbol: str, period: str = "1mo") -> pd.DataFrame:
+        """Fetch stock data with proper caching"""
         try:
-            self.logger.info(f"Fetching stock data for {symbol}")
             stock = yf.Ticker(symbol)
-            
-            # Validate symbol exists
-            if not stock.info:
-                self.logger.warning(f"Invalid stock symbol: {symbol}")
-                return pd.DataFrame()
-                
             data = stock.history(period=period)
-            
-            # Data validation
-            if data.empty:
-                self.logger.warning(f"No data returned for {symbol}")
-                return pd.DataFrame()
-                
-            data.reset_index(inplace=True)
-            return data
-            
+            return data.reset_index() if not data.empty else pd.DataFrame()
         except Exception as e:
-            self.logger.error(f"Stock data error for {symbol}: {e}", exc_info=True)
+            logging.error(f"Stock data error: {e}")
             return pd.DataFrame()
 
+    @staticmethod
     @st.cache_data(ttl=300, show_spinner="Fetching crypto data...")
-    def get_crypto_data(self, symbol: str = "bitcoin") -> Dict:
-        """Fetch cryptocurrency data with retry logic"""
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                url = "https://api.coingecko.com/api/v3/simple/price"
-                params = {
-                    'ids': symbol.lower(),
-                    'vs_currencies': 'usd',
-                    'include_24hr_change': 'true',
-                    'include_market_cap': 'true',
-                    'include_24hr_vol': 'true'
-                }
-                
-                response = self.session.get(url, params=params)
-                response.raise_for_status()
-                
-                data = response.json()
-                if not data.get(symbol.lower()):
-                    raise ValueError(f"No data returned for {symbol}")
-                    
-                return data
-                
-            except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
-                    self.logger.error(f"Failed to fetch crypto data after {max_retries} attempts: {e}")
-                    return {}
-                time.sleep(1)  # Exponential backoff could be added here
-                
-        return {}
+    def get_crypto_data(coin_id: str = "bitcoin") -> Dict[str, float]:
+        """
+        Fetch cryptocurrency data with cache-safe parameters
+        Args:
+            coin_id: CoinGecko compatible coin ID (lowercase, no symbols)
+        Returns:
+            Dictionary with price data
+        """
+        try:
+            url = "https://api.coingecko.com/api/v3/simple/price"
+            params = {
+                'ids': coin_id.lower().strip(),
+                'vs_currencies': 'usd',
+                'include_24hr_change': 'true'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Simplify the return structure
+            return {
+                'price': data[coin_id]['usd'],
+                'change_24h': data[coin_id]['usd_24h_change'],
+                'last_updated': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logging.error(f"Crypto data error: {e}")
+            return {}
 
-    @st.cache_data(ttl=600, show_spinner="Fetching news...")
-    def get_news_data(self, topic: str = "technology", max_articles: int = 10) -> List[Dict]:
-        """Fetch news from multiple sources with parallel processing"""
-        news_sources = {
-            "technology": [
-                "https://feeds.feedburner.com/oreilly/radar",
-                "https://techcrunch.com/feed/",
-                "https://news.ycombinator.com/rss"
-            ],
-            "business": [
-                "https://www.bloomberg.com/feed/podcasts/etf-report.rss",
-                "https://www.cnbc.com/id/100003114/device/rss/rss.html"
-            ],
-            "general": [
-                "https://rss.cnn.com/rss/cnn_topstories.rss",
-                "https://feeds.bbci.co.uk/news/rss.xml"
-            ]
-        }
-        
-        sources = news_sources.get(topic.lower(), news_sources["general"])
-        all_articles = []
-        
+    @staticmethod
+    @st.cache_data(ttl=3600, show_spinner="Fetching news...")
+    def get_news_feed(source_url: str, max_items: int = 5) -> List[Dict[str, str]]:
+        """Fetch news feed with cache-safe parameters"""
+        try:
+            feed = feedparser.parse(source_url)
+            return [{
+                'title': entry.get('title', ''),
+                'link': entry.get('link', '#'),
+                'published': entry.get('published', ''),
+                'source': feed.feed.get('title', source_url)
+            } for entry in feed.entries[:max_items]]
+        except Exception as e:
+            logging.error(f"News feed error: {e}")
+            return []
+
+    # Instance method for stateful operations
+    def get_multiple_crypto_prices(self, coin_ids: List[str]) -> Dict[str, Dict]:
+        """Get prices for multiple coins (not cached)"""
+        results = {}
+        for coin_id in coin_ids:
+            results[coin_id] = self.get_crypto_data(coin_id)
+        return results
         for source in sources[:3]:  # Limit to top 3 sources
             try:
                 feed = feedparser.parse(source)
