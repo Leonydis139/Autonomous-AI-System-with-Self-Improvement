@@ -1,4 +1,5 @@
 import streamlit as st
+import pytz
 
 def render_user_prefs_tab():
     st.header("⚙️ User Preferences")
@@ -7,7 +8,7 @@ def render_user_prefs_tab():
     with st.form("account_form"):
         st.text_input("Full Name", "John Doe")
         st.text_input("Email", "john.doe@example.com")
-        timezone = st.selectbox("Timezone", st.session_state.preferences.TIMEZONES, index=st.session_state.preferences.TIMEZONES.index("UTC"))
+        timezone = st.selectbox("Timezone", pytz.all_timezones, index=pytz.all_timezones.index("UTC"))
         if st.form_submit_button("Save Settings"):
             st.success("Settings updated successfully")
     st.subheader("Data Privacy")
