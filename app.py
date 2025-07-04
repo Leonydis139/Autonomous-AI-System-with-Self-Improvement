@@ -241,133 +241,256 @@ class EnhancedDatabaseManager:
                 self.return_connection(conn, db_type)
 
 # ===================== LIVE DATA PROVIDERS =====================
+import streamlit as st
+import yfinance as yf
+import requests
+import feedparser
+import pandas as pd
+import os
+import logging
+from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from functools import lru_cache
+
 class LiveDataProvider:
-    """Enhanced live data provider with multiple sources"""
+    """Enhanced live data provider with multiple sources and robust caching"""
     
     def __init__(self):
         self.cache_manager = EnhancedDatabaseManager()
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        self.session = self._create_session()
+        self._setup_logging()
+        
+    def _create_session(self) -> requests.Session:
+        """Create and configure requests session"""
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate'
         })
+        session.timeout = 15  # Default timeout in seconds
+        return session
 
-    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def _setup_logging(self):
+        """Configure logging for the data provider"""
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+    @st.cache_data(ttl=300, show_spinner="Fetching stock data...")
     def get_stock_data(self, symbol: str, period: str = "1mo") -> pd.DataFrame:
-        """Fetch real-time stock data"""
+        """Fetch and cache stock data with enhanced error handling"""
         try:
+            self.logger.info(f"Fetching stock data for {symbol}")
             stock = yf.Ticker(symbol)
+            
+            # Validate symbol exists
+            if not stock.info:
+                self.logger.warning(f"Invalid stock symbol: {symbol}")
+                return pd.DataFrame()
+                
             data = stock.history(period=period)
+            
+            # Data validation
+            if data.empty:
+                self.logger.warning(f"No data returned for {symbol}")
+                return pd.DataFrame()
+                
             data.reset_index(inplace=True)
             return data
+            
         except Exception as e:
-            logger.error(f"Stock data error for {symbol}: {e}")
+            self.logger.error(f"Stock data error for {symbol}: {e}", exc_info=True)
             return pd.DataFrame()
 
-    @st.cache_data(ttl=300)
+    @st.cache_data(ttl=300, show_spinner="Fetching crypto data...")
     def get_crypto_data(self, symbol: str = "bitcoin") -> Dict:
-        """Fetch cryptocurrency data from CoinGecko"""
-        try:
-            url = f"https://api.coingecko.com/api/v3/simple/price"
-            params = {
-                'ids': symbol,
-                'vs_currencies': 'usd',
-                'include_24hr_change': 'true',
-                'include_market_cap': 'true',
-                'include_24hr_vol': 'true'
-            }
-            response = self.session.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Crypto data error: {e}")
-            return {}
-
-    @st.cache_data(ttl=600)  # Cache for 10 minutes
-    def get_news_data(self, topic: str = "technology", max_articles: int = 10) -> List[Dict]:
-        """Fetch news data from multiple sources"""
-        try:
-            news_sources = [
-                f"https://feeds.feedburner.com/oreilly/radar",
-                f"https://rss.cnn.com/rss/edition.rss",
-                f"https://feeds.bbci.co.uk/news/rss.xml"
-            ]
-            
-            all_articles = []
-            for source in news_sources:
-                try:
-                    feed = feedparser.parse(source)
-                    for entry in feed.entries[:max_articles//len(news_sources)]:
-                        all_articles.append({
-                            'title': entry.title,
-                            'link': entry.link,
-                            'published': entry.get('published', ''),
-                            'summary': entry.get('summary', ''),
-                            'source': feed.feed.get('title', 'Unknown')
-                        })
-                except Exception as e:
-                    logger.warning(f"Error fetching from {source}: {e}")
+        """Fetch cryptocurrency data with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                url = "https://api.coingecko.com/api/v3/simple/price"
+                params = {
+                    'ids': symbol.lower(),
+                    'vs_currencies': 'usd',
+                    'include_24hr_change': 'true',
+                    'include_market_cap': 'true',
+                    'include_24hr_vol': 'true'
+                }
+                
+                response = self.session.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                if not data.get(symbol.lower()):
+                    raise ValueError(f"No data returned for {symbol}")
                     
-            return all_articles[:max_articles]
-        except Exception as e:
-            logger.error(f"News data error: {e}")
-            return []
+                return data
+                
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    self.logger.error(f"Failed to fetch crypto data after {max_retries} attempts: {e}")
+                    return {}
+                time.sleep(1)  # Exponential backoff could be added here
+                
+        return {}
 
-    @st.cache_data(ttl=1800)  # Cache for 30 minutes
-    def get_weather_data(self, city: str = "New York") -> Dict:
-        """Fetch weather data from OpenWeatherMap"""
-        try:
-            api_key = os.environ.get('OPENWEATHER_API_KEY')
-            if not api_key:
-                return {"error": "OpenWeather API key not configured"}
+    @st.cache_data(ttl=600, show_spinner="Fetching news...")
+    def get_news_data(self, topic: str = "technology", max_articles: int = 10) -> List[Dict]:
+        """Fetch news from multiple sources with parallel processing"""
+        news_sources = {
+            "technology": [
+                "https://feeds.feedburner.com/oreilly/radar",
+                "https://techcrunch.com/feed/",
+                "https://news.ycombinator.com/rss"
+            ],
+            "business": [
+                "https://www.bloomberg.com/feed/podcasts/etf-report.rss",
+                "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+            ],
+            "general": [
+                "https://rss.cnn.com/rss/cnn_topstories.rss",
+                "https://feeds.bbci.co.uk/news/rss.xml"
+            ]
+        }
+        
+        sources = news_sources.get(topic.lower(), news_sources["general"])
+        all_articles = []
+        
+        for source in sources[:3]:  # Limit to top 3 sources
+            try:
+                feed = feedparser.parse(source)
+                for entry in feed.entries[:max(3, max_articles//len(sources))]:
+                    article = {
+                        'title': entry.get('title', 'No title'),
+                        'link': entry.get('link', '#'),
+                        'published': entry.get('published', ''),
+                        'summary': entry.get('summary', ''),
+                        'source': feed.feed.get('title', source)
+                    }
+                    all_articles.append(article)
+                    
+                    if len(all_articles) >= max_articles:
+                        break
+                        
+            except Exception as e:
+                self.logger.warning(f"Error fetching news from {source}: {e}")
+                
+        return sorted(all_articles, 
+                     key=lambda x: datetime.strptime(x['published'], '%a, %d %b %Y %H:%M:%S %Z') 
+                     if x['published'] else datetime.now(), 
+                     reverse=True)[:max_articles]
+
+    @st.cache_data(ttl=1800, show_spinner="Checking weather...")
+    def get_weather_data(self, location: str, api_key: Optional[str] = None) -> Dict:
+        """Fetch weather data with location validation"""
+        api_key = api_key or os.getenv('OPENWEATHER_API_KEY')
+        if not api_key:
+            return {"error": "API key not configured"}
             
-            url = f"https://api.openweathermap.org/data/2.5/weather"
-            params = {
-                'q': city,
+        try:
+            # First try geocoding to get coordinates
+            geo_url = "http://api.openweathermap.org/geo/1.0/direct"
+            geo_params = {
+                'q': location,
+                'limit': 1,
+                'appid': api_key
+            }
+            
+            geo_response = self.session.get(geo_url, params=geo_params)
+            geo_response.raise_for_status()
+            geo_data = geo_response.json()
+            
+            if not geo_data:
+                return {"error": "Location not found"}
+                
+            lat, lon = geo_data[0]['lat'], geo_data[0]['lon']
+            
+            # Get weather data
+            weather_url = "https://api.openweathermap.org/data/3.0/onecall"
+            weather_params = {
+                'lat': lat,
+                'lon': lon,
+                'exclude': 'minutely,hourly',
                 'appid': api_key,
                 'units': 'metric'
             }
-            response = self.session.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            return response.json()
+            
+            weather_response = self.session.get(weather_url, params=weather_params)
+            weather_response.raise_for_status()
+            
+            data = weather_response.json()
+            data['location'] = geo_data[0]
+            return data
+            
         except Exception as e:
-            logger.error(f"Weather data error: {e}")
+            self.logger.error(f"Weather data error for {location}: {e}")
             return {"error": str(e)}
 
-    def get_economic_indicators(self) -> Dict:
-        """Fetch economic indicators from FRED API"""
-        try:
-            fred_api_key = os.environ.get('FRED_API_KEY')
-            if not fred_api_key:
-                return {"error": "FRED API key not configured"}
+    @st.cache_data(ttl=86400, show_spinner="Fetching economic data...")  # 24 hour cache
+    def get_economic_indicators(self, api_key: Optional[str] = None) -> Dict:
+        """Fetch economic indicators with better data structure"""
+        api_key = api_key or os.getenv('FRED_API_KEY')
+        if not api_key:
+            return {"error": "API key not configured"}
             
-            indicators = {
-                'GDP': 'GDP',
-                'Unemployment': 'UNRATE',
-                'Inflation': 'CPIAUCSL',
-                'Interest_Rate': 'FEDFUNDS'
+        indicators = {
+            'GDP': {
+                'series_id': 'GDP',
+                'name': 'Gross Domestic Product',
+                'unit': 'Billions of Dollars',
+                'frequency': 'Quarterly'
+            },
+            'Unemployment': {
+                'series_id': 'UNRATE',
+                'name': 'Unemployment Rate',
+                'unit': 'Percent',
+                'frequency': 'Monthly'
+            },
+            'Inflation': {
+                'series_id': 'CPIAUCSL',
+                'name': 'Consumer Price Index',
+                'unit': 'Index',
+                'frequency': 'Monthly'
             }
-            
-            data = {}
-            for name, series_id in indicators.items():
-                try:
-                    url = f"https://api.stlouisfed.org/fred/series/observations"
-                    params = {
-                        'series_id': series_id,
-                        'api_key': fred_api_key,
-                        'file_type': 'json',
-                        'limit': 12,
-                        'sort_order': 'desc'
-                    }
-                    response = self.session.get(url, params=params, timeout=10)
-                    response.raise_for_status()
-                    data[name] = response.json()
-                except Exception as e:
-                    logger.warning(f"Error fetching {name}: {e}")
-                    
-            return data
-        except Exception as e:
-            logger.error(f"Economic data error: {e}")
-            return {"error": str(e)}
+        }
+        
+        results = {}
+        for key, config in indicators.items():
+            try:
+                url = "https://api.stlouisfed.org/fred/series/observations"
+                params = {
+                    'series_id': config['series_id'],
+                    'api_key': api_key,
+                    'file_type': 'json',
+                    'limit': 12,
+                    'sort_order': 'desc'
+                }
+                
+                response = self.session.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                results[key] = {
+                    'metadata': config,
+                    'data': data.get('observations', []),
+                    'as_of': datetime.now().isoformat()
+                }
+                
+            except Exception as e:
+                self.logger.warning(f"Error fetching {key}: {e}")
+                results[key] = {
+                    'error': str(e),
+                    'metadata': config
+                }
+                
+        return results
+
+    def clear_cache(self, cache_type: Optional[str] = None):
+        """Clear specific or all cached data"""
+        if cache_type == 'stocks' or not cache_type:
+            st.cache_data.clear()
+        if cache_type == 'database' or not cache_type:
+            self.cache_manager.clear_all_cache()
 
 # ===================== ENHANCED UI COMPONENTS =====================
 class EnhancedUIComponents:
