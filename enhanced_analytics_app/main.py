@@ -24,3 +24,9 @@ with tab4:
     # ... (existing code) ...
     if st.button("Export My Data"):
         export_user_data("current_user")
+        
+def send_notification(message: str):
+    st.toast(message)  # Streamlit 1.25+ toast notification
+
+# Example usage:
+send_notification("Analysis complete! Check your results.")
